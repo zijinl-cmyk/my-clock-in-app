@@ -352,7 +352,7 @@ today_str = now.strftime("%Y-%m-%d")
 time_str = now.strftime("%H:%M:%S")
 
 # --- 网页界面设计 ---
-st.title("⏱️ 个人上下班打卡工具 (云端升级版)")
+st.title("⏱️ ClockIn")
 st.write(f"**今天是:** {today_str} | **当前系统时间:** {time_str}")
 
 # 加载云端数据
