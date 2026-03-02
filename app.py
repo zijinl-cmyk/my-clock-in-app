@@ -103,6 +103,116 @@
 #         st.write(f"**累计工作总时长:** {total_hours} 小时")
 
 
+# import streamlit as st
+# import pandas as pd
+# from datetime import datetime, timezone, timedelta
+# import os
+#
+# DATA_FILE = "attendance_records.csv"
+#
+#
+# # --- 功能函数 ---
+# def load_data():
+#     if os.path.exists(DATA_FILE):
+#         df = pd.read_csv(DATA_FILE)
+#         # 防止读取CSV时空白变成 NaN 导致报错，把空值统一转换为空字符串
+#         df["下班时间"] = df["下班时间"].fillna("")
+#         df["工作时长(小时)"] = df["工作时长(小时)"].fillna("")
+#         return df
+#     else:
+#         return pd.DataFrame(columns=["日期", "上班时间", "下班时间", "工作时长(小时)"])
+#
+#
+# def save_data(df):
+#     df.to_csv(DATA_FILE, index=False, encoding='utf-8-sig')
+#
+#
+# # --- 时区设置 ---
+# # 强制使用北京时间 (UTC+8)
+# tz_beijing = timezone(timedelta(hours=8))
+#
+# # 获取正确的北京时间和日期
+# now = datetime.now(tz_beijing)
+# today_str = now.strftime("%Y-%m-%d")
+# time_str = now.strftime("%H:%M:%S")
+#
+# # --- 网页界面设计 ---
+# st.title("⏱️ 个人上下班打卡工具")
+# st.write(f"**今天是:** {today_str} | **当前系统时间 (北京时间):** {time_str}")
+#
+# df = load_data()
+#
+# # 寻找所有【未打下班卡】的记录
+# uncompleted_records = df[df["下班时间"] == ""]
+#
+# col1, col2 = st.columns(2)
+#
+# # --- 上班打卡逻辑 ---
+# with col1:
+#     if st.button("🟢 上班打卡", use_container_width=True):
+#         if len(uncompleted_records) > 0:
+#             st.warning("您还有尚未结束的打卡记录，请先打下班卡！")
+#         else:
+#             new_record = pd.DataFrame([{
+#                 "日期": today_str,
+#                 "上班时间": time_str,
+#                 "下班时间": "",
+#                 "工作时长(小时)": ""
+#             }])
+#             df = pd.concat([df, new_record], ignore_index=True)
+#             save_data(df)
+#             st.success(f"上班打卡成功！时间：{time_str}")
+#             st.rerun()
+#
+# # --- 下班打卡逻辑 (已修复跨天计算) ---
+# with col2:
+#     if st.button("🔴 下班打卡", use_container_width=True):
+#         if len(uncompleted_records) == 0:
+#             st.error("您还没有正在进行的上班记录，不能直接打下班卡哦！")
+#         else:
+#             # 找到最后一条未完成的记录的索引
+#             idx = uncompleted_records.index[-1]
+#
+#             # 记录下班时间
+#             df.loc[idx, "下班时间"] = time_str
+#
+#             # 获取它上班那天的日期和时间
+#             start_date_str = df.loc[idx, "日期"]
+#             start_time_str = df.loc[idx, "上班时间"]
+#
+#             # 组合成完整的日期时间对象进行精确计算 (不管跨了多少天都不怕)
+#             start_datetime = datetime.strptime(f"{start_date_str} {start_time_str}", "%Y-%m-%d %H:%M:%S")
+#             end_datetime = datetime.strptime(f"{today_str} {time_str}", "%Y-%m-%d %H:%M:%S")
+#
+#             # 计算时长
+#             duration = (end_datetime - start_datetime).total_seconds() / 3600
+#
+#             # 容错处理：如果你之前测试出了负数，这里清零，防止显示错误
+#             if duration < 0:
+#                 duration = 0
+#
+#             df.loc[idx, "工作时长(小时)"] = round(duration, 2)
+#
+#             save_data(df)
+#             st.success(f"下班打卡成功！本次工作了 {round(duration, 2)} 小时。")
+#             st.rerun()
+#
+# st.divider()
+#
+# # --- 历史记录查询模块 ---
+# st.subheader("📅 历史打卡记录查询")
+#
+# if st.checkbox("查看所有打卡记录"):
+#     if df.empty:
+#         st.info("目前还没有任何打卡记录。")
+#     else:
+#         st.dataframe(df, use_container_width=True)
+#         # 计算时排除空值和负数（防止之前的错误数据影响总计）
+#         valid_hours = pd.to_numeric(df["工作时长(小时)"], errors='coerce')
+#         total_hours = valid_hours[valid_hours > 0].sum()
+#         st.write(f"**累计有效工作总时长:** {round(total_hours, 2)} 小时")
+
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone, timedelta
@@ -115,7 +225,6 @@ DATA_FILE = "attendance_records.csv"
 def load_data():
     if os.path.exists(DATA_FILE):
         df = pd.read_csv(DATA_FILE)
-        # 防止读取CSV时空白变成 NaN 导致报错，把空值统一转换为空字符串
         df["下班时间"] = df["下班时间"].fillna("")
         df["工作时长(小时)"] = df["工作时长(小时)"].fillna("")
         return df
@@ -127,11 +236,8 @@ def save_data(df):
     df.to_csv(DATA_FILE, index=False, encoding='utf-8-sig')
 
 
-# --- 时区设置 ---
-# 强制使用北京时间 (UTC+8)
+# --- 时区与时间设置 ---
 tz_beijing = timezone(timedelta(hours=8))
-
-# 获取正确的北京时间和日期
 now = datetime.now(tz_beijing)
 today_str = now.strftime("%Y-%m-%d")
 time_str = now.strftime("%H:%M:%S")
@@ -142,17 +248,19 @@ st.write(f"**今天是:** {today_str} | **当前系统时间 (北京时间):** {
 
 df = load_data()
 
-# 寻找所有【未打下班卡】的记录
-uncompleted_records = df[df["下班时间"] == ""]
+# 检查今天是否已经打过上班卡
+has_punched_in_today = not df[df["日期"] == today_str].empty
 
 col1, col2 = st.columns(2)
 
-# --- 上班打卡逻辑 ---
+# --- 🟢 上班打卡逻辑 (每日限1次) ---
 with col1:
     if st.button("🟢 上班打卡", use_container_width=True):
-        if len(uncompleted_records) > 0:
-            st.warning("您还有尚未结束的打卡记录，请先打下班卡！")
+        if has_punched_in_today:
+            # 如果今天已经有记录了，阻止再次生成新行
+            st.warning("您今天已经打过上班卡啦！安心工作吧。")
         else:
+            # 只有今天没打过卡，才新建一行
             new_record = pd.DataFrame([{
                 "日期": today_str,
                 "上班时间": time_str,
@@ -164,37 +272,33 @@ with col1:
             st.success(f"上班打卡成功！时间：{time_str}")
             st.rerun()
 
-# --- 下班打卡逻辑 (已修复跨天计算) ---
+# --- 🔴 下班打卡逻辑 (可无限次更新最新时间) ---
 with col2:
     if st.button("🔴 下班打卡", use_container_width=True):
-        if len(uncompleted_records) == 0:
-            st.error("您还没有正在进行的上班记录，不能直接打下班卡哦！")
+        if df.empty:
+            st.error("系统没有任何上班记录，无法打下班卡！")
         else:
-            # 找到最后一条未完成的记录的索引
-            idx = uncompleted_records.index[-1]
-
-            # 记录下班时间
-            df.loc[idx, "下班时间"] = time_str
+            # 永远抓取表格的最后一行（最新的一次工作记录）
+            idx = df.index[-1]
 
             # 获取它上班那天的日期和时间
             start_date_str = df.loc[idx, "日期"]
             start_time_str = df.loc[idx, "上班时间"]
 
-            # 组合成完整的日期时间对象进行精确计算 (不管跨了多少天都不怕)
+            # 更新为最新的下班时间
+            df.loc[idx, "下班时间"] = time_str
+
+            # 计算时长
             start_datetime = datetime.strptime(f"{start_date_str} {start_time_str}", "%Y-%m-%d %H:%M:%S")
             end_datetime = datetime.strptime(f"{today_str} {time_str}", "%Y-%m-%d %H:%M:%S")
 
-            # 计算时长
             duration = (end_datetime - start_datetime).total_seconds() / 3600
-
-            # 容错处理：如果你之前测试出了负数，这里清零，防止显示错误
-            if duration < 0:
-                duration = 0
+            if duration < 0: duration = 0
 
             df.loc[idx, "工作时长(小时)"] = round(duration, 2)
 
             save_data(df)
-            st.success(f"下班打卡成功！本次工作了 {round(duration, 2)} 小时。")
+            st.success(f"下班时间已更新！本次工作了 {round(duration, 2)} 小时。辛苦了！")
             st.rerun()
 
 st.divider()
@@ -207,7 +311,7 @@ if st.checkbox("查看所有打卡记录"):
         st.info("目前还没有任何打卡记录。")
     else:
         st.dataframe(df, use_container_width=True)
-        # 计算时排除空值和负数（防止之前的错误数据影响总计）
+        # 计算时排除空值和负数
         valid_hours = pd.to_numeric(df["工作时长(小时)"], errors='coerce')
         total_hours = valid_hours[valid_hours > 0].sum()
         st.write(f"**累计有效工作总时长:** {round(total_hours, 2)} 小时")
