@@ -317,6 +317,121 @@
 #         st.write(f"**累计有效工作总时长:** {round(total_hours, 2)} 小时")
 
 
+# import streamlit as st
+# import pandas as pd
+# from datetime import datetime, timezone, timedelta
+# from supabase import create_client, Client
+#
+#
+# # --- 初始化云端数据库连接 ---
+# @st.cache_resource
+# def init_connection():
+#     url = st.secrets["SUPABASE_URL"]
+#     key = st.secrets["SUPABASE_KEY"]
+#     return create_client(url, key)
+#
+#
+# supabase: Client = init_connection()
+#
+#
+# # --- 数据库读写功能函数 ---
+# def load_data():
+#     # 从云端数据库抓取 records 表的所有数据，按 id 排序
+#     response = supabase.table('records').select('*').order('id', desc=False).execute()
+#     df = pd.DataFrame(response.data)
+#     if not df.empty:
+#         df["end_time"] = df["end_time"].fillna("")
+#         df["duration"] = df["duration"].fillna(0.0)
+#     return df
+#
+#
+# # --- 时区与时间设置 ---
+# tz_beijing = timezone(timedelta(hours=8))
+# now = datetime.now(tz_beijing)
+# today_str = now.strftime("%Y-%m-%d")
+# time_str = now.strftime("%H:%M:%S")
+#
+# # --- 网页界面设计 ---
+# st.title("⏱️ ClockIn")
+# st.write(f"**今天是:** {today_str} | **当前系统时间:** {time_str}")
+#
+# # 加载云端数据
+# df = load_data()
+#
+# # 检查今天是否已经打过上班卡
+# has_punched_in_today = False
+# if not df.empty:
+#     has_punched_in_today = not df[df["date"] == today_str].empty
+#
+# col1, col2 = st.columns(2)
+#
+# # --- 🟢 上班打卡 (向云端 Insert 数据) ---
+# with col1:
+#     if st.button("🟢 上班打卡", use_container_width=True):
+#         if has_punched_in_today:
+#             st.warning("您今天已经打过上班卡啦！安心工作吧。")
+#         else:
+#             # 向数据库插入新记录
+#             supabase.table('records').insert({
+#                 "date": today_str,
+#                 "start_time": time_str,
+#                 "end_time": "",
+#                 "duration": 0.0
+#             }).execute()
+#
+#             st.success(f"上班打卡成功！时间：{time_str} (已同步至云端)")
+#             st.rerun()
+#
+# # --- 🔴 下班打卡 (向云端 Update 数据) ---
+# with col2:
+#     if st.button("🔴 下班打卡", use_container_width=True):
+#         if df.empty:
+#             st.error("系统没有任何上班记录，无法打下班卡！")
+#         else:
+#             # 找到数据库中的最后一条记录
+#             last_record = df.iloc[-1]
+#             record_id = int(last_record['id'])
+#             start_date_str = last_record['date']
+#             start_time_str = last_record['start_time']
+#
+#             # 计算时长
+#             start_datetime = datetime.strptime(f"{start_date_str} {start_time_str}", "%Y-%m-%d %H:%M:%S")
+#             end_datetime = datetime.strptime(f"{today_str} {time_str}", "%Y-%m-%d %H:%M:%S")
+#             duration = (end_datetime - start_datetime).total_seconds() / 3600
+#             if duration < 0: duration = 0
+#
+#             # 更新数据库里的对应记录
+#             supabase.table('records').update({
+#                 "end_time": time_str,
+#                 "duration": round(duration, 2)
+#             }).eq("id", record_id).execute()
+#
+#             st.success(f"下班时间已更新！本次工作了 {round(duration, 2)} 小时。")
+#             st.rerun()
+#
+# st.divider()
+#
+# # --- 历史记录查询模块 ---
+# st.subheader("📅 历史打卡记录查询")
+#
+# if st.checkbox("查看所有打卡记录"):
+#     if df.empty:
+#         st.info("云端数据库目前还没有任何记录。")
+#     else:
+#         # 为了展示美观，把英文列名重命名为中文
+#         display_df = df[['date', 'start_time', 'end_time', 'duration']].rename(columns={
+#             'date': '日期',
+#             'start_time': '上班时间',
+#             'end_time': '下班时间',
+#             'duration': '工作时长(小时)'
+#         })
+#         st.dataframe(display_df, use_container_width=True)
+#
+#         valid_hours = pd.to_numeric(df["duration"], errors='coerce')
+#         total_hours = valid_hours[valid_hours > 0].sum()
+#         st.write(f"**累计有效工作总时长:** {round(total_hours, 2)} 小时")
+
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone, timedelta
@@ -334,10 +449,10 @@ def init_connection():
 supabase: Client = init_connection()
 
 
-# --- 数据库读写功能函数 ---
-def load_data():
-    # 从云端数据库抓取 records 表的所有数据，按 id 排序
-    response = supabase.table('records').select('*').order('id', desc=False).execute()
+# --- 数据库读写功能 ---
+def load_data(user_name):
+    # 只加载当前用户的记录
+    response = supabase.table('records').select('*').eq('user_name', user_name).order('id', desc=False).execute()
     df = pd.DataFrame(response.data)
     if not df.empty:
         df["end_time"] = df["end_time"].fillna("")
@@ -345,88 +460,106 @@ def load_data():
     return df
 
 
-# --- 时区与时间设置 ---
+def load_all_data():
+    # 管理员加载所有数据
+    response = supabase.table('records').select('*').order('id', desc=False).execute()
+    return pd.DataFrame(response.data)
+
+
+# --- 时区设置 ---
 tz_beijing = timezone(timedelta(hours=8))
 now = datetime.now(tz_beijing)
 today_str = now.strftime("%Y-%m-%d")
 time_str = now.strftime("%H:%M:%S")
 
-# --- 网页界面设计 ---
-st.title("⏱️ ClockIn")
-st.write(f"**今天是:** {today_str} | **当前系统时间:** {time_str}")
+# --- 网页界面 ---
+st.title("🏢 团队打卡系统")
 
-# 加载云端数据
-df = load_data()
+# --- 侧边栏：用户身份认证 ---
+with st.sidebar:
+    st.header("👤 身份认证")
+    user_name = st.text_input("请输入您的姓名:", placeholder="例如: 张三")
 
-# 检查今天是否已经打过上班卡
+    if not user_name:
+        st.warning("请先输入姓名才能打卡！")
+        st.stop()  # 阻止后续代码运行
+
+    st.success(f"欢迎, {user_name}!")
+
+    # 管理员入口
+    if user_name == "admin":
+        st.info("进入管理员模式")
+
+# --- 主界面逻辑 ---
+st.write(f"**今天是:** {today_str} | **当前时间:** {time_str}")
+
+# 根据身份加载数据
+if user_name == "admin":
+    # 管理员看所有数据
+    df_all = load_all_data()
+    st.subheader("📊 全员打卡记录 (管理员视图)")
+    if not df_all.empty:
+        st.dataframe(df_all)
+    else:
+        st.info("暂无任何数据")
+    st.stop()  # 管理员不需要打卡按钮
+
+# 普通用户看自己的数据
+df = load_data(user_name)
+
+# 检查今天是否打过卡
 has_punched_in_today = False
 if not df.empty:
     has_punched_in_today = not df[df["date"] == today_str].empty
 
 col1, col2 = st.columns(2)
 
-# --- 🟢 上班打卡 (向云端 Insert 数据) ---
+# --- 🟢 上班打卡 ---
 with col1:
     if st.button("🟢 上班打卡", use_container_width=True):
         if has_punched_in_today:
-            st.warning("您今天已经打过上班卡啦！安心工作吧。")
+            st.warning("您今天已经打过上班卡啦！")
         else:
-            # 向数据库插入新记录
+            # 插入数据时带上 user_name
             supabase.table('records').insert({
+                "user_name": user_name,  # 关键：记录是谁打的卡
                 "date": today_str,
                 "start_time": time_str,
                 "end_time": "",
                 "duration": 0.0
             }).execute()
-
-            st.success(f"上班打卡成功！时间：{time_str} (已同步至云端)")
+            st.success("上班打卡成功！")
             st.rerun()
 
-# --- 🔴 下班打卡 (向云端 Update 数据) ---
+# --- 🔴 下班打卡 ---
 with col2:
     if st.button("🔴 下班打卡", use_container_width=True):
         if df.empty:
-            st.error("系统没有任何上班记录，无法打下班卡！")
+            st.error("您还没有任何上班记录！")
         else:
-            # 找到数据库中的最后一条记录
+            # 找到自己的最后一条记录
             last_record = df.iloc[-1]
             record_id = int(last_record['id'])
-            start_date_str = last_record['date']
-            start_time_str = last_record['start_time']
 
             # 计算时长
-            start_datetime = datetime.strptime(f"{start_date_str} {start_time_str}", "%Y-%m-%d %H:%M:%S")
+            start_datetime = datetime.strptime(f"{last_record['date']} {last_record['start_time']}",
+                                               "%Y-%m-%d %H:%M:%S")
             end_datetime = datetime.strptime(f"{today_str} {time_str}", "%Y-%m-%d %H:%M:%S")
             duration = (end_datetime - start_datetime).total_seconds() / 3600
             if duration < 0: duration = 0
 
-            # 更新数据库里的对应记录
+            # 更新数据库
             supabase.table('records').update({
                 "end_time": time_str,
                 "duration": round(duration, 2)
             }).eq("id", record_id).execute()
 
-            st.success(f"下班时间已更新！本次工作了 {round(duration, 2)} 小时。")
+            st.success(f"下班打卡成功！工作时长: {round(duration, 2)} 小时")
             st.rerun()
 
 st.divider()
-
-# --- 历史记录查询模块 ---
-st.subheader("📅 历史打卡记录查询")
-
-if st.checkbox("查看所有打卡记录"):
-    if df.empty:
-        st.info("云端数据库目前还没有任何记录。")
-    else:
-        # 为了展示美观，把英文列名重命名为中文
-        display_df = df[['date', 'start_time', 'end_time', 'duration']].rename(columns={
-            'date': '日期',
-            'start_time': '上班时间',
-            'end_time': '下班时间',
-            'duration': '工作时长(小时)'
-        })
-        st.dataframe(display_df, use_container_width=True)
-
-        valid_hours = pd.to_numeric(df["duration"], errors='coerce')
-        total_hours = valid_hours[valid_hours > 0].sum()
-        st.write(f"**累计有效工作总时长:** {round(total_hours, 2)} 小时")
+st.subheader(f"📅 {user_name} 的历史记录")
+if not df.empty:
+    st.dataframe(df[['date', 'start_time', 'end_time', 'duration']], use_container_width=True)
+else:
+    st.info("暂无记录")
